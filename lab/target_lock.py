@@ -46,7 +46,7 @@ LOCK_GATE = 0.12
 # y of the box's bottom edge to the 572 px frame:
 #     STOP_BOTTOM = y_bottom / screenshot_height * IMAGE_HEIGHT
 # ========== YOUR CODE HERE: Step 4: measure the stop distance ==========
-STOP_BOTTOM = None  # px -- measure it (see above)
+STOP_BOTTOM = 335  # px -- measure it (see above)
 # =======================================================================
 # Closer to STOP_BOTTOM than this and we stand still: the box jitters by a
 # few pixels every frame, and a robot that shuffles back and forth to chase
@@ -112,7 +112,9 @@ def position_distance(detection, position):
     # ========== YOUR CODE HERE: Step 3: position_distance ==========
     # The straight-line (Euclidean) distance between box_position(detection)
     # and position. Both are fractions of the image, so compare them directly.
-    raise NotImplementedError
+    x, y = box_position(detection)
+    px, py = position
+    return float(np.hypot(x - px, y - py))
     # ===============================================================
 
 
@@ -142,6 +144,17 @@ def pick_target(targets, lock):
     #      the nearest one. Nobody that close? None.
     # Tip: min(people, key=lambda d: position_distance(d, lock.position))
     # is the nearest of a non-empty list.
+
+    if lock.position is None:
+        # No position remembered: pick the most centred person.
+        return min(targets, key=lambda d: abs(box_offset(d)))
+    else:
+        # Position remembered: pick the nearest person within LOCK_GATE.
+        nearby_targets = [d for d in targets if position_distance(d, lock.position) <= LOCK_GATE]
+        if nearby_targets:
+            return min(nearby_targets, key=lambda d: position_distance(d, lock.position))
+        else:
+            return None
     raise NotImplementedError
     # =========================================================
 
@@ -157,7 +170,7 @@ def remember(lock, detection):
     """
     # ========== YOUR CODE HERE: Step 3: remember ==========
     # lock.position = where the detection is (box_position).
-    raise NotImplementedError
+    lock.position = box_position(detection)
     # ======================================================
     if USE_COLOR:
         remember_color(lock, detection)  # Optional Step 5
@@ -185,7 +198,11 @@ def approach_speed(target_bottom, max_forward):
     # stand still. Otherwise a proportional command that reaches
     # max_forward at SLOWDOWN_PX of error, max_forward * error / SLOWDOWN_PX,
     # clamped to [-MAX_BACKUP_VEL, max_forward].
-    raise NotImplementedError
+    error = STOP_BOTTOM - target_bottom
+    if abs(error) <= STOP_TOLERANCE:
+        return 0.0
+    speed = max_forward * error / SLOWDOWN_PX
+    return float(np.clip(speed, -MAX_BACKUP_VEL, max_forward))
     # ============================================================
 
 

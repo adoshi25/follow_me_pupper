@@ -43,10 +43,10 @@ from boxes import box_bottom, box_offset, detection_class_id
 # TRACK_FORWARD_VEL is how fast Pupper walks. At about 0.5 m/s and above, the
 # walking policy switches from a trot to a gallop: that is when it runs.
 # ========== YOUR CODE HERE: Step 2: control constants ==========
-TIMEOUT = None            # s without a detection before we go searching
-SEARCH_YAW_VEL = None     # rad/s rotation speed while searching
-TRACK_FORWARD_VEL = None  # m/s forward speed while tracking (Step 4: the top speed)
-KP = None                 # rad/s of yaw per unit of box_offset
+TIMEOUT = 1.0            # s without a detection before we go searching
+SEARCH_YAW_VEL = 1.0     # rad/s rotation speed while searching
+TRACK_FORWARD_VEL = 0.3  # m/s forward speed while tracking (Step 4: the top speed)
+KP = 5.0                 # rad/s of yaw per unit of box_offset
 # ===============================================================
 
 # --- Optional Step 6: obstacle avoidance ------------------------------------
@@ -232,7 +232,18 @@ class StateMachineNode(Node):
         #   return None if it is None (nobody near where the target was),
         #   else target_lock.remember(self.lock, target).
         # Step 4: in 3, also set self.target_bottom = box_bottom(target).
-        raise NotImplementedError
+
+        targets = [d for d in detections if detection_class_id(d) == self.target_class_id]
+        if not targets:
+            return None
+        target = target_lock.pick_target(targets, self.lock)
+        if target is None:
+            return None
+        target_lock.remember(self.lock, target)
+        self.target_bottom = box_bottom(target)
+        self.target_pos = box_offset(target)
+        self.last_detection_time = self.get_clock().now()
+        return target
         # ==========================================================================
 
     # ======================================================== motion out
@@ -286,7 +297,12 @@ class StateMachineNode(Node):
         """
         # ========== YOUR CODE HERE: Step 2: choose_state ==========
         # Seen within the last TIMEOUT seconds: TRACK. Otherwise: SEARCH.
-        raise NotImplementedError
+        if seconds_since_detection < TIMEOUT:
+            return State.TRACK
+        else:
+            return State.SEARCH     
+
+        raise NotImplementedError   
         # ==========================================================
 
     def motion_command(self):
@@ -312,7 +328,18 @@ class StateMachineNode(Node):
         #   target_lock.approach_speed(self.target_bottom, TRACK_FORWARD_VEL)
         #   instead: full speed when far, slowing to a stop at STOP_BOTTOM,
         #   backing off when too close.
-        raise NotImplementedError
+
+        if self.state == State.SEARCH:
+            if self.target_pos > 0:
+                return -SEARCH_YAW_VEL, 0.0
+            else:
+                return SEARCH_YAW_VEL, 0.0
+        elif self.state == State.TRACK:
+            yaw = -KP * self.target_pos
+            forward = target_lock.approach_speed(self.target_bottom, TRACK_FORWARD_VEL)
+            return yaw, forward
+        else:
+            return 0.0, 0.0
         # ===================================================================
 
     # ======================================================== Optional Step 6: the detour
